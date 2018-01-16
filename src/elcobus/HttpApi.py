@@ -4,10 +4,17 @@ import sanic.response
 from .ElcobusMessage.ElcobusFrame import ElcobusMessage
 from .ElcobusMessage._registry import find_field
 from .ElcobusProtocol import ElcobusHttpProtocol
+from .ElcobusMessage.Temperature import Temperature
+from .ElcobusMessage.Pressure import Pressure
+from .ElcobusMessage.Percent import Percent
+from .ElcobusMessage.Status import Status
 
 
 my_source = 0x01
 
+_ = [Temperature, Pressure, Percent, Status]
+# These need to be imported to be parsed.
+# Assign them to a dummy variable to avoid "optimizing" them out
 
 def add_routes(app: sanic.Sanic):
     @app.get('/boiler_temperature')
