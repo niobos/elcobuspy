@@ -9,11 +9,10 @@ setup(
     package_dir={'': 'src'},
     python_requires=">=3.6",
     install_requires=[
-        'pyserial-asyncio',
+        'paho-mqtt',
         'crcmod',
         'attrs>=17.3.0',
         'bitstruct',
-        'sanic',
     ],
     setup_requires=[
         'pytest-runner'
