@@ -12,6 +12,8 @@ from ._registry import register
     0x0521: 'outdoor temperature',
     0x052f: 'tap water temperature',
     0x074b: 'tap water set temperature',
+    0x0518: 'actual temperature',  # note: different logical addresses denote different circuits
+    0x0667: 'target temperature',  # note: different logical addresses denote different circuits
 })
 @structattr.add_methods
 @attr.s(slots=True, auto_attribs=True)

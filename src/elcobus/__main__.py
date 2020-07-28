@@ -239,8 +239,14 @@ def process_frame(ebm: ElcobusFrame):
     }:
         return
 
-    if isinstance(ebm.data, Temperature):
+    if ebm.field.name in {'boiler temperature', 'boiler set temperature', 'boiler return temperature',
+                          'outdoor temperature',
+                          'tap water temperature', 'tap water set temperature'}:
         mqtt_client.client.publish(args.mqtt_topic_prefix + '/' + ebm.field.name, ebm.data.temperature, qos=1)
+    elif ebm.field.name in {'actual temperature', 'target temperature'}:
+        circuit = ebm.logical_source - 32  # 33 => 1, 34 => 2
+        mqtt_client.client.publish(args.mqtt_topic_prefix + '/' + ebm.field.name + f" {circuit}", ebm.data.temperature,
+                                   qos=1)
     elif ebm.field.name in {'pump modulation', 'burner modulation'}:
         mqtt_client.client.publish(args.mqtt_topic_prefix + '/' + ebm.field.name, ebm.data.percent, qos=1)
     elif ebm.field.name == 'pressure':
@@ -340,6 +346,26 @@ loop.create_task(poll_every(
         field=find_field('status'),
     )
 ))
+
+for circuit in (1, 2):
+    loop.create_task(poll_every(
+        60,
+        ElcobusMessage(
+            source_address=my_source, destination_address=0x00,
+            message_type=ElcobusMessage.MessageType.Get,
+            logical_source=0x3d, logical_destination=0x20 + circuit,
+            field=find_field('actual temperature'),
+        )
+    ))
+    loop.create_task(poll_every(
+        60,
+        ElcobusMessage(
+            source_address=my_source, destination_address=0x00,
+            message_type=ElcobusMessage.MessageType.Get,
+            logical_source=0x3d, logical_destination=0x20 + circuit,
+            field=find_field('target temperature'),
+        )
+    ))
 
 
 mqtt_client = MqttClient(mqtt_connection_details)
