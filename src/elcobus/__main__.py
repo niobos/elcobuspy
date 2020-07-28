@@ -10,10 +10,15 @@ import typing
 
 from paho.mqtt import client as mqtt
 
-from .ElcobusMessage.Temperature import Temperature
 from .ElcobusMessage.ElcobusFrame import ElcobusFrame
 from .ElcobusMessage.ElcobusFrame import ElcobusMessage
 from .ElcobusMessage._registry import field_registry, find_field
+from .ElcobusMessage.Temperature import Temperature
+from .ElcobusMessage.Percent import Percent
+from .ElcobusMessage.Pressure import Pressure
+from .ElcobusMessage.Status import Status
+
+_ = [Temperature, Percent, Pressure, Status]  # "Use" these somewhere to avoid "optimizing" them out
 
 parser = argparse.ArgumentParser(description='Elcobus communication daemon')
 parser.add_argument('--mqtt-topic-prefix', help="output topic prefix", type=str, default="elcobus")
