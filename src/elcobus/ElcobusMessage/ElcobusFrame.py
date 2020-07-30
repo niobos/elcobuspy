@@ -1,11 +1,11 @@
+import enum
+
 import attr
 import bitstruct
 import crcmod
 import structattr
-from structattr.types import UInt, Enum, Bool, Zero, One
+from structattr.types import UInt, Enum, Bool, Zero, One, FixedPointSInt
 from typing import Union
-
-from ._registry import field_registry
 
 
 crc_func = crcmod.mkCrcFun(0x11021, initCrc=0, xorOut=0, rev=False)
@@ -104,6 +104,8 @@ class ElcobusMessage(ElcobusFrame):
             bitstruct_info
         )
 
+        # skip length
+
         bitstruct_info = structattr.BitStructInfo()
         for attribute in attributes[7:11]:
             bitstruct_info.add_attr(attribute)
@@ -118,6 +120,11 @@ class ElcobusMessage(ElcobusFrame):
 
         msg = cls(**header_fields, **body_fields)
 
+        try:
+            msg.field = Field(msg.field)
+        except ValueError:
+            pass
+
         if msg.message_type in (
             ElcobusMessage.MessageType.Info,
             ElcobusMessage.MessageType.Set,
@@ -126,16 +133,11 @@ class ElcobusMessage(ElcobusFrame):
             msg.data = frame[9:]
 
             try:
-                candidate = field_registry[msg.field]
-                msg.data = candidate.value_type.from_bytes(msg.data)
-                msg.field = candidate
-            except (KeyError, ValueError):
+                candidate = msg.field.data_type
+                msg.data = candidate.from_bytes(msg.data)
+            except (AttributeError, ValueError):
                 pass
         else:
-            try:
-                msg.field = field_registry[msg.field]
-            except KeyError:
-                pass
             if len(frame) > 9:
                 raise ValueError("Data found on Ack or Get packet")
 
@@ -202,3 +204,73 @@ class UnknownFrame(ElcobusFrame):
         crc = crc_func(result)
         result += bitstruct.pack(">u16", crc)
         return result
+
+
+@structattr.add_methods
+@attr.s(slots=True, auto_attribs=True)
+class Temperature:
+    class Zero(Enum(8)):
+        Zero = 0
+    flag: Zero = Zero.Zero
+
+    temperature: FixedPointSInt(total_bits=16, fractional_bits=6) = 0
+
+
+@structattr.add_methods
+@attr.s(slots=True, auto_attribs=True)
+class RoomStatus:
+    temperature: FixedPointSInt(total_bits=16, fractional_bits=6) = 0
+    class Zero(Enum(8)):
+        Zero = 0
+    _unkn1: Zero = Zero.Zero
+
+
+@structattr.add_methods
+@attr.s(slots=True, auto_attribs=True)
+class Pressure:
+    class Zero(Enum(8)):
+        Zero = 0
+    flag: Zero = Zero.Zero
+
+    pressure: FixedPointSInt(total_bits=16, scale_factor=0.1) = 0
+
+
+@structattr.add_methods
+@attr.s(slots=True, auto_attribs=True)
+class Percent:
+    class Zero(Enum(8)):
+        Zero = 0
+    flag: Zero = Zero.Zero
+
+    percent: UInt(8) = 0
+
+
+@structattr.add_methods
+@attr.s(slots=True, auto_attribs=True)
+class Status:
+    class Zero(Enum(8)):
+        Zero = 0
+    flag: Zero = Zero.Zero
+    status: UInt(8) = 0
+
+
+class Field(int, enum.Enum):
+    def __new__(cls, value: int, data_type: type):
+        o = int.__new__(cls, value)
+        o._value_ = value
+        o.data_type = data_type
+        return o
+
+    RoomStatus = (0x0215, RoomStatus)
+    OutdoorTemperature = (0x0521, Temperature)
+    BoilerTemperature = (0x0519, Temperature)
+    BoilerSetTemperature = (0x0923, Temperature)
+    BoilerReturnTemperature = (0x051a, Temperature)
+    TapWaterTemperature = (0x052f, Temperature)
+    TapWaterSetTemperature = (0x074b, Temperature)
+    HeatingCircuitTemperature = (0x0518, Temperature)  # note: logical address denote circuits: 0x20 + circuit number
+    HeatingCircuitSetTemperature = (0x0667, Temperature)  # note: logical address denote circuits: 0x20 + circuit number
+    Pressure = (0x3063, Pressure)
+    BurnerMoludation = (0x305f, Percent)
+    PumpModulation = (0x04a2, Percent)
+    Status = (0x3034, Status)

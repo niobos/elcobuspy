@@ -10,15 +10,8 @@ import typing
 
 from paho.mqtt import client as mqtt
 
-from .ElcobusMessage.ElcobusFrame import ElcobusFrame
-from .ElcobusMessage.ElcobusFrame import ElcobusMessage
-from .ElcobusMessage._registry import field_registry, find_field
-from .ElcobusMessage.Temperature import Temperature
-from .ElcobusMessage.Percent import Percent
-from .ElcobusMessage.Pressure import Pressure
-from .ElcobusMessage.Status import Status
+from .ElcobusMessage import ElcobusFrame
 
-_ = [Temperature, Percent, Pressure, Status]  # "Use" these somewhere to avoid "optimizing" them out
 
 parser = argparse.ArgumentParser(description='Elcobus communication daemon')
 parser.add_argument('--mqtt-topic-prefix', help="output topic prefix", type=str, default="elcobus")
@@ -52,9 +45,8 @@ logger = logging.getLogger(__name__)
 
 # Print loaded modules
 logger.info("Loaded ElcobusMessage decoder for:")
-for field_value in sorted(field_registry.keys()):
-    field = field_registry[field_value]
-    logger.info(f" - 0x{field.field:04x} {field.value_type.__name__} {field.name} ")
+for field in ElcobusFrame.Field:
+    logger.info(f" - 0x{field.value:04x} {field.name} (data: {field.data_type.__name__})")
 
 loop = asyncio.get_event_loop()
 
@@ -211,7 +203,7 @@ class MqttClient:
 
     def on_message(self, client: mqtt.Client, user_data, msg: mqtt.MQTTMessage):
         try:
-            ebm = ElcobusFrame.from_bytes(msg.payload)
+            ebm = ElcobusFrame.ElcobusFrame.from_bytes(msg.payload)
             logger.info(f"Rx: [{' '.join(['{:02x}'.format(b) for b in ebm.to_bytes()])}]")
             logger.debug("Rx:  %r", ebm)
             # ^^ don't use ''.format()
@@ -230,140 +222,143 @@ class MqttClient:
         process_frame(ebm)
 
 
-def process_frame(ebm: ElcobusFrame):
-    if not isinstance(ebm, ElcobusMessage):
+my_source = 0x01
+
+
+def process_frame(ebm: ElcobusFrame.ElcobusFrame):
+    if not isinstance(ebm, ElcobusFrame.ElcobusMessage):
         return
     if ebm.message_type not in {
-            ElcobusMessage.MessageType.Info,
-            ElcobusMessage.MessageType.Ret,
+        ElcobusFrame.ElcobusMessage.MessageType.Info,
+        ElcobusFrame.ElcobusMessage.MessageType.Ret,
     }:
         return
 
-    if ebm.field.name in {'boiler temperature', 'boiler set temperature', 'boiler return temperature',
-                          'outdoor temperature',
-                          'tap water temperature', 'tap water set temperature'}:
+    if ebm.field in {ElcobusFrame.Field.BoilerTemperature, ElcobusFrame.Field.BoilerSetTemperature,
+                     ElcobusFrame.Field.BoilerReturnTemperature,
+                     ElcobusFrame.Field.OutdoorTemperature,
+                     ElcobusFrame.Field.TapWaterTemperature, ElcobusFrame.Field.TapWaterSetTemperature,
+                     }:
         mqtt_client.client.publish(args.mqtt_topic_prefix + '/' + ebm.field.name, ebm.data.temperature, qos=1)
-    elif ebm.field.name in {'actual temperature', 'target temperature'}:
+    elif ebm.field in {ElcobusFrame.Field.HeatingCircuitTemperature, ElcobusFrame.Field.HeatingCircuitSetTemperature}:
         circuit = ebm.logical_source - 32  # 33 => 1, 34 => 2
         mqtt_client.client.publish(args.mqtt_topic_prefix + '/' + ebm.field.name + f" {circuit}", ebm.data.temperature,
                                    qos=1)
-    elif ebm.field.name in {'pump modulation', 'burner modulation'}:
+    elif ebm.field in {ElcobusFrame.Field.PumpModulation, ElcobusFrame.Field.BurnerMoludation}:
         mqtt_client.client.publish(args.mqtt_topic_prefix + '/' + ebm.field.name, ebm.data.percent, qos=1)
-    elif ebm.field.name == 'pressure':
+    elif ebm.field == ElcobusFrame.Field.Pressure:
         mqtt_client.client.publish(args.mqtt_topic_prefix + '/' + ebm.field.name, ebm.data.pressure, qos=1)
-    elif ebm.field.name == 'status':
+    elif ebm.field == ElcobusFrame.Field.Status:
         mqtt_client.client.publish(args.mqtt_topic_prefix + '/' + ebm.field.name, ebm.data.status, qos=1)
 
 
-async def poll_every(interval_secs: int, ebm: ElcobusMessage):
+async def poll_every(interval_secs: int, ebm: ElcobusFrame.ElcobusMessage):
     await asyncio.sleep(random.randint(0, interval_secs))  # stagger the calls
     while True:
         await asyncio.sleep(interval_secs)
         mqtt_client.client.publish(mqtt_connection_details.topic + '/bus_tx', ebm.to_bytes(), qos=2)
         # Reply is automatically processed in process_frame, even if it is unsollicited
 
-my_source = 0x01
-
 # Do not poll boiler temperature: it is polled by the display of the boiler itself
 loop.create_task(poll_every(
     60,
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x0d,
-        field=find_field('boiler set temperature'),
+        field=ElcobusFrame.Field.BoilerSetTemperature,
     )
 ))
 loop.create_task(poll_every(
     60,
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x11,
-        field=find_field('boiler return temperature'),
+        field=ElcobusFrame.Field.BoilerReturnTemperature,
     )
 ))
 loop.create_task(poll_every(
     60,
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x05,
-        field=find_field('outdoor temperature'),
+        field=ElcobusFrame.Field.OutdoorTemperature,
     )
 ))
 loop.create_task(poll_every(
     60,
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x31,
-        field=find_field('tap water temperature'),
+        field=ElcobusFrame.Field.TapWaterTemperature,
     )
 ))
 loop.create_task(poll_every(
     60,
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x31,
-        field=find_field('tap water set temperature'),
+        field=ElcobusFrame.Field.TapWaterSetTemperature,
     )
 ))
 loop.create_task(poll_every(
     60,
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x11,
-        field=find_field('burner modulation'),
+        field=ElcobusFrame.Field.BurnerMoludation,
     )
 ))
 loop.create_task(poll_every(
     60,
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x05,
-        field=find_field('pump modulation'),
+        field=ElcobusFrame.Field.PumpModulation,
     )
 ))
 loop.create_task(poll_every(
     600,  # pressure changes slowly
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x11,
-        field=find_field('pressure'),
+        field=ElcobusFrame.Field.Pressure,
     )
 ))
 loop.create_task(poll_every(
     60,
-    ElcobusMessage(
+    ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
-        message_type=ElcobusMessage.MessageType.Get,
+        message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x09,
-        field=find_field('status'),
+        field=ElcobusFrame.Field.Status,
     )
 ))
 
 for circuit in (1, 2):
     loop.create_task(poll_every(
         60,
-        ElcobusMessage(
+        ElcobusFrame.ElcobusMessage(
             source_address=my_source, destination_address=0x00,
-            message_type=ElcobusMessage.MessageType.Get,
+            message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
             logical_source=0x3d, logical_destination=0x20 + circuit,
-            field=find_field('actual temperature'),
+            field=ElcobusFrame.Field.HeatingCircuitTemperature,
         )
     ))
     loop.create_task(poll_every(
         60,
-        ElcobusMessage(
+        ElcobusFrame.ElcobusMessage(
             source_address=my_source, destination_address=0x00,
-            message_type=ElcobusMessage.MessageType.Get,
+            message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
             logical_source=0x3d, logical_destination=0x20 + circuit,
-            field=find_field('target temperature'),
+            field=ElcobusFrame.Field.HeatingCircuitSetTemperature,
         )
     ))
 
