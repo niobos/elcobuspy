@@ -255,7 +255,7 @@ def process_frame(ebm: ElcobusFrame.ElcobusFrame):
 async def poll_every(interval_secs: int, ebm: ElcobusFrame.ElcobusMessage):
     await asyncio.sleep(random.randint(0, interval_secs))  # stagger the calls
     while True:
-        await asyncio.sleep(interval_secs)
+        await asyncio.sleep(interval_secs + random.uniform(-interval_secs/10, interval_secs/10))
         mqtt_client.client.publish(mqtt_connection_details.topic + '/bus_tx', ebm.to_bytes(), qos=2)
         # Reply is automatically processed in process_frame, even if it is unsollicited
 
