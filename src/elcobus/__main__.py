@@ -311,7 +311,7 @@ loop.create_task(poll_every(
         source_address=my_source, destination_address=0x00,
         message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,
         logical_source=0x3d, logical_destination=0x11,
-        field=ElcobusFrame.Field.BurnerMoludation,
+        field=ElcobusFrame.Field.BurnerModulation,
     )
 ))
 loop.create_task(poll_every(
@@ -324,7 +324,7 @@ loop.create_task(poll_every(
     )
 ))
 loop.create_task(poll_every(
-    600,  # pressure changes slowly
+    250,  # pressure changes slowly
     ElcobusFrame.ElcobusMessage(
         source_address=my_source, destination_address=0x00,
         message_type=ElcobusFrame.ElcobusMessage.MessageType.Get,

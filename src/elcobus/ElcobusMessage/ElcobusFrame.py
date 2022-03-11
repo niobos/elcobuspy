@@ -271,6 +271,6 @@ class Field(int, enum.Enum):
     HeatingCircuitTemperature = (0x0518, Temperature)  # note: logical address denote circuits: 0x20 + circuit number
     HeatingCircuitSetTemperature = (0x0667, Temperature)  # note: logical address denote circuits: 0x20 + circuit number
     Pressure = (0x3063, Pressure)
-    BurnerMoludation = (0x305f, Percent)
+    BurnerModulation = (0x305f, Percent)
     PumpModulation = (0x04a2, Percent)
     Status = (0x3034, Status)
